@@ -53,12 +53,10 @@ button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation;-webk
 
 .dial{position:relative;width:min(92vw,62vh,520px);aspect-ratio:1;max-width:100%;touch-action:none;flex-shrink:0}
 .ring{position:absolute;left:50%;top:50%;border-radius:50%;transform:translate(-50%,-50%);
-  background:linear-gradient(150deg,rgba(255,255,255,.13),rgba(255,255,255,.035) 55%,rgba(255,255,255,.07));
-  -webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%);outline:none}
+  background:linear-gradient(150deg,rgba(255,255,255,.13),rgba(255,255,255,.035) 55%,rgba(255,255,255,.07));outline:none}
 .ring:focus-visible{box-shadow:0 0 0 2px var(--ember-2)}
 .lens{position:absolute;left:50%;top:.6%;width:13%;height:31%;transform:translateX(-50%);border-radius:999px;
   background:linear-gradient(180deg,rgba(255,255,255,.18),rgba(255,255,255,.05) 40%,rgba(255,255,255,.09));
-  -webkit-backdrop-filter:blur(6px) saturate(120%);backdrop-filter:blur(6px) saturate(120%);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -1px 0 rgba(255,255,255,.12),inset 0 0 0 1px rgba(255,255,255,.12),0 10px 30px rgba(0,0,0,.25);
   transition:opacity .6s cubic-bezier(.2,.8,.2,1),transform .6s cubic-bezier(.2,.8,.2,1);pointer-events:none}
 .running .lens{opacity:0;transform:translateX(-50%) scaleY(.6)}
@@ -71,7 +69,6 @@ canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
     radial-gradient(90% 70% at 30% 18%,rgba(255,255,255,.34),rgba(255,255,255,0) 60%),
     radial-gradient(80% 80% at 70% 90%,rgba(255,122,69,.20),rgba(255,122,69,0) 70%),
     rgba(255,255,255,.08);
-  -webkit-backdrop-filter:blur(26px) saturate(180%);backdrop-filter:blur(26px) saturate(180%);
   box-shadow:inset 0 1.5px 0 rgba(255,255,255,.6),inset 0 -12px 28px rgba(255,255,255,.06),inset 0 0 0 1px rgba(255,255,255,.16),0 18px 50px rgba(0,0,0,.35);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;z-index:3}
 .core:active{--press:.94}
@@ -90,7 +87,6 @@ canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .pills{display:flex;gap:12px;min-height:52px}
 .pill{border:0;border-radius:999px;padding:14px 30px;font-size:16px;font-weight:600;letter-spacing:.2em;text-indent:.2em;
   background:linear-gradient(160deg,rgba(255,255,255,.16),rgba(255,255,255,.05));
-  -webkit-backdrop-filter:blur(20px) saturate(170%);backdrop-filter:blur(20px) saturate(170%);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.45),inset 0 0 0 1px rgba(255,255,255,.12),0 8px 24px rgba(0,0,0,.25);
   transform:scale(var(--press,1));transition:transform .5s cubic-bezier(.34,1.56,.64,1),color .3s}
 .pill:active{--press:.93}
@@ -588,6 +584,10 @@ canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
         const span = Math.ceil(170 / g.ang);
         const lo = Math.max(g.min, Math.floor(p.pos) - span), hi = Math.min(g.max, Math.ceil(p.pos) + span);
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        // one font per ring; labels passing the lens are enlarged with a scale instead of a new font size (much cheaper on phones)
+        const fontBase = '500 ' + (R*g.font).toFixed(1) + 'px Manrope, system-ui, sans-serif';
+        const fontNear = '600 ' + (R*g.font).toFixed(1) + 'px Manrope, system-ui, sans-serif';
+        ctx.font = fontBase;
         for (let v = lo; v <= hi; v++){
           const a = -(v - p.pos)*g.ang;                         // degrees from 12 o'clock, larger values sit to the left
           const ad = Math.abs(a); if (ad > 168) continue;
@@ -598,11 +598,12 @@ canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
           const isLabel = v % g.every === 0;
           ctx.save(); ctx.translate(x, y); ctx.rotate(a*D2R);
           if (isLabel || near > .02){
-            const fs = R*g.font*(1 + .85*near);
-            ctx.font = (near > .5 ? 600 : 500) + ' ' + fs.toFixed(1) + 'px Manrope, system-ui, sans-serif';
+            const sc = 1 + .85*near;
+            if (sc !== 1) ctx.scale(sc, sc);
             const al = isLabel ? (.16 + .42*fade)*(1 - near) + near : near;
             ctx.fillStyle = 'rgba(244,246,250,' + (al*show).toFixed(3) + ')';
-            ctx.fillText(g.label(v), 0, 1);
+            if (near > .5){ ctx.font = fontNear; ctx.fillText(g.label(v), 0, 1/sc); ctx.font = fontBase; }
+            else ctx.fillText(g.label(v), 0, 1/sc);
           } else {
             ctx.strokeStyle = 'rgba(244,246,250,' + ((.10 + .28*fade)*show).toFixed(3) + ')';
             ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(0, -th*.12); ctx.lineTo(0, th*.12); ctx.stroke();

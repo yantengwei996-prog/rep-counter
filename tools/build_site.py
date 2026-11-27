@@ -15,7 +15,7 @@ HEAD = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="description" content="转动圆环调组数、个数、速度，真人语音报数的运动计数器。">
-<meta name="theme-color" content="#1B0F0B">
+<meta name="theme-color" content="#282623">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -24,7 +24,7 @@ HEAD = """<!doctype html>
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" type="image/png" href="icon-192.png">
 <style>
-html{box-sizing:border-box;background:#1B0F0B}
+html{box-sizing:border-box;background:#282623}
 body{margin:0}
 [hidden]{display:none!important}
 </style>
@@ -34,10 +34,19 @@ body{margin:0}
 FULLBLEED = """
 <style>
 html,body{height:100%;min-height:100dvh}
+body{background:#282623}
 .app{padding-top:calc(env(safe-area-inset-top,0px) + 24px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 24px)}
 .title{top:calc(env(safe-area-inset-top,0px) + 14px)}
+/* The very top and bottom of the light field always end in these two colours, whatever the glows are doing.
+   Safari tints the area behind its status bar and toolbar from the page edge, so the two now meet without a dark band. */
+.field::before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:linear-gradient(180deg,#282623 0,rgba(40,38,35,0) 10%,rgba(39,46,43,0) 90%,#272E2B 100%)}
+.edge{position:fixed;left:0;right:0;height:2px;z-index:2;pointer-events:none}
+.edge.top{top:0;background:#282623}
+.edge.bottom{bottom:0;background:#272E2B}
 </style>
 """
+EDGES = '<div class="edge top" aria-hidden="true"></div><div class="edge bottom" aria-hidden="true"></div>\n'
 SW_REG = """
 <script>
 if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
@@ -45,13 +54,13 @@ if ('serviceWorker' in navigator) addEventListener('load', () => navigator.servi
 """
 # the source starts with <title>, <meta>, <link>s and then <style>; keep those in <head>
 i = src.index("<style>")
-html = HEAD + src[:i] + src[i:src.index("</style>") + len("</style>")] + FULLBLEED + "\n</head>\n<body>\n" + src[src.index("</style>") + len("</style>"):] + SW_REG + "</body>\n</html>\n"
+html = HEAD + src[:i] + src[i:src.index("</style>") + len("</style>")] + FULLBLEED + "\n</head>\n<body>\n" + EDGES + src[src.index("</style>") + len("</style>"):] + SW_REG + "</body>\n</html>\n"
 open(os.path.join(SITE, "index.html"), "w", encoding="utf-8", newline="\n").write(html)
 
 manifest = {
     "name": "运动计数器", "short_name": "计数器", "lang": "zh-CN",
     "start_url": "./", "scope": "./", "display": "standalone", "orientation": "portrait",
-    "background_color": "#1B0F0B", "theme_color": "#1B0F0B",
+    "background_color": "#282623", "theme_color": "#282623",
     "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
               {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"},
               {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}],
@@ -76,10 +85,14 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   const font = url.host === 'fonts.googleapis.com' || url.host === 'fonts.gstatic.com';
   if (url.origin !== location.origin && !font) return;
-  e.respondWith(caches.match(req, {ignoreSearch: true}).then(hit => hit || fetch(req).then(res => {
-    if (res.ok || res.type === 'opaque') { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
-    return res;
-  }).catch(() => hit)));
+  const keep = res => { if (res.ok || res.type === 'opaque') { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); } return res; };
+  // the page itself: newest version from the network when online (so updates show up at once), cached copy when offline
+  if (req.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/')) {
+    e.respondWith(fetch(req).then(keep).catch(() => caches.match(req, {ignoreSearch: true}).then(hit => hit || caches.match('index.html'))));
+    return;
+  }
+  // voice pack, icons, fonts: cache first (they only change together with a new cache version)
+  e.respondWith(caches.match(req, {ignoreSearch: true}).then(hit => hit || fetch(req).then(keep)));
 });
 """ % version
 open(os.path.join(SITE, "sw.js"), "w", encoding="utf-8", newline="\n").write(SW)
