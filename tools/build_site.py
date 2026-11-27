@@ -15,7 +15,7 @@ HEAD = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="description" content="转动圆环调组数、个数、速度，真人语音报数的运动计数器。">
-<meta name="theme-color" content="#08090D">
+<meta name="theme-color" content="#1B0F0B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -24,10 +24,18 @@ HEAD = """<!doctype html>
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" type="image/png" href="icon-192.png">
 <style>
-html{box-sizing:border-box}
-:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{box-sizing:border-box;background:#1B0F0B}
 body{margin:0}
 [hidden]{display:none!important}
+</style>
+"""
+# Full screen: the page itself runs under the status bar and the home bar (the light field fills them),
+# while the content keeps clear of them. Comes after the app's own styles so it wins.
+FULLBLEED = """
+<style>
+html,body{height:100%;min-height:100dvh}
+.app{padding-top:calc(env(safe-area-inset-top,0px) + 24px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 24px)}
+.title{top:calc(env(safe-area-inset-top,0px) + 14px)}
 </style>
 """
 SW_REG = """
@@ -37,13 +45,13 @@ if ('serviceWorker' in navigator) addEventListener('load', () => navigator.servi
 """
 # the source starts with <title>, <meta>, <link>s and then <style>; keep those in <head>
 i = src.index("<style>")
-html = HEAD + src[:i] + src[i:src.index("</style>") + len("</style>")] + "\n</head>\n<body>\n" + src[src.index("</style>") + len("</style>"):] + SW_REG + "</body>\n</html>\n"
+html = HEAD + src[:i] + src[i:src.index("</style>") + len("</style>")] + FULLBLEED + "\n</head>\n<body>\n" + src[src.index("</style>") + len("</style>"):] + SW_REG + "</body>\n</html>\n"
 open(os.path.join(SITE, "index.html"), "w", encoding="utf-8", newline="\n").write(html)
 
 manifest = {
     "name": "运动计数器", "short_name": "计数器", "lang": "zh-CN",
     "start_url": "./", "scope": "./", "display": "standalone", "orientation": "portrait",
-    "background_color": "#08090D", "theme_color": "#08090D",
+    "background_color": "#1B0F0B", "theme_color": "#1B0F0B",
     "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
               {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"},
               {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}],
