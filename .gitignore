@@ -1,0 +1,5 @@
+# local-only material, not part of the published app
+试听/
+.claude/
+_preview.html
+__pycache__/

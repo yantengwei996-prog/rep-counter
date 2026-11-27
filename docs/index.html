@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="转动圆环调组数、个数、速度，真人语音报数的运动计数器。">
+<meta name="theme-color" content="#08090D">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="运动计数器">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+html{box-sizing:border-box}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+[hidden]{display:none!important}
+</style>
+<title>运动计数器</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap">
+<style>
+/* Layout: one concentric glass dial — core = start, rings outward = sets · reps · speed — over a slow ember/aqua light field.
+   Deliberately single-theme (dark): glass needs light moving behind it. */
+:root{
+  color-scheme:dark;
+  --ink:#08090D;
+  --fg:#F4F6FA;
+  --muted:rgba(244,246,250,.56);
+  --faint:rgba(244,246,250,.32);
+  --glass:rgba(255,255,255,.075);
+  --glass-hi:rgba(255,255,255,.16);
+  --edge:rgba(255,255,255,.22);
+  --ember:#FF7A45;
+  --ember-2:#FFB86B;
+  --aqua:#3ED3C4;
+  --rose:#FF5C8A;
+  --ui:"Manrope","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+}
+html,body{height:100%}
+body{background:var(--ink);color:var(--fg);font-family:var(--ui);-webkit-tap-highlight-color:transparent;overflow:hidden;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+:focus-visible{outline:2px solid var(--ember-2);outline-offset:3px}
+
+/* ---------- light field behind the glass ---------- */
+.field{position:fixed;inset:0;overflow:hidden;background:var(--ink);z-index:0}
+.field i{position:absolute;width:78vmax;height:78vmax;border-radius:50%;will-change:transform}
+.field .a{left:-24vmax;top:-20vmax;background:radial-gradient(closest-side,rgba(255,122,69,.55),rgba(255,122,69,0));animation:driftA 23s ease-in-out infinite alternate}
+.field .b{right:-30vmax;bottom:-26vmax;background:radial-gradient(closest-side,rgba(62,211,196,.42),rgba(62,211,196,0));animation:driftB 29s ease-in-out infinite alternate}
+.field .c{left:20vmax;top:30vmax;width:56vmax;height:56vmax;background:radial-gradient(closest-side,rgba(255,92,138,.30),rgba(255,92,138,0));animation:driftC 35s ease-in-out infinite alternate}
+@keyframes driftA{to{transform:translate(22vmax,18vmax) scale(1.12)}}
+@keyframes driftB{to{transform:translate(-20vmax,-16vmax) scale(.9)}}
+@keyframes driftC{to{transform:translate(-26vmax,-22vmax) scale(1.15)}}
+.field::after{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 45%,rgba(8,9,13,0) 40%,rgba(8,9,13,.65) 100%)}
+
+/* ---------- page ---------- */
+.app{position:relative;z-index:1;height:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(18px,4vh,34px);
+  padding-block:24px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.title{position:absolute;top:18px;left:max(20px,env(safe-area-inset-left,0px));font-size:13px;font-weight:600;letter-spacing:.24em;color:var(--muted)}
+
+.dial{position:relative;width:min(92vw,62vh,520px);aspect-ratio:1;max-width:100%;touch-action:none;flex-shrink:0}
+.ring{position:absolute;left:50%;top:50%;border-radius:50%;transform:translate(-50%,-50%);
+  background:linear-gradient(150deg,rgba(255,255,255,.13),rgba(255,255,255,.035) 55%,rgba(255,255,255,.07));
+  -webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%);outline:none}
+.ring:focus-visible{box-shadow:0 0 0 2px var(--ember-2)}
+.lens{position:absolute;left:50%;top:.6%;width:13%;height:31%;transform:translateX(-50%);border-radius:999px;
+  background:linear-gradient(180deg,rgba(255,255,255,.18),rgba(255,255,255,.05) 40%,rgba(255,255,255,.09));
+  -webkit-backdrop-filter:blur(6px) saturate(120%);backdrop-filter:blur(6px) saturate(120%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -1px 0 rgba(255,255,255,.12),inset 0 0 0 1px rgba(255,255,255,.12),0 10px 30px rgba(0,0,0,.25);
+  transition:opacity .6s cubic-bezier(.2,.8,.2,1),transform .6s cubic-bezier(.2,.8,.2,1);pointer-events:none}
+.running .lens{opacity:0;transform:translateX(-50%) scaleY(.6)}
+canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+
+.core{position:absolute;left:50%;top:50%;width:calc(68% * .5 - 2px);height:calc(68% * .5 - 2px);border-radius:50%;border:0;padding:0;
+  transform:translate(-50%,-50%) scale(var(--press,1));
+  transition:transform .55s cubic-bezier(.34,1.56,.64,1);
+  background:
+    radial-gradient(90% 70% at 30% 18%,rgba(255,255,255,.34),rgba(255,255,255,0) 60%),
+    radial-gradient(80% 80% at 70% 90%,rgba(255,122,69,.20),rgba(255,122,69,0) 70%),
+    rgba(255,255,255,.08);
+  -webkit-backdrop-filter:blur(26px) saturate(180%);backdrop-filter:blur(26px) saturate(180%);
+  box-shadow:inset 0 1.5px 0 rgba(255,255,255,.6),inset 0 -12px 28px rgba(255,255,255,.06),inset 0 0 0 1px rgba(255,255,255,.16),0 18px 50px rgba(0,0,0,.35);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;z-index:3}
+.core:active{--press:.94}
+.core .main{font-size:clamp(22px,6.4vmin,34px);font-weight:600;letter-spacing:.32em;text-indent:.32em;line-height:1.1}
+.core .main.n{font-size:clamp(44px,15vmin,92px);font-weight:300;letter-spacing:-.02em;text-indent:0;line-height:1;font-variant-numeric:tabular-nums}
+.core .sub{font-size:clamp(12px,3.2vmin,15px);color:var(--muted);font-weight:500;letter-spacing:.08em;font-variant-numeric:tabular-nums}
+.core .main.tick{animation:beat .28s cubic-bezier(.2,.9,.3,1.3)}
+@keyframes beat{from{transform:scale(1.12);opacity:.75}to{transform:scale(1);opacity:1}}
+
+.readout{display:flex;gap:22px;justify-content:center;align-items:baseline;min-height:44px}
+.readout div{display:flex;flex-direction:column;align-items:center;gap:1px}
+.readout b{font-size:22px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.readout span{font-size:11px;color:var(--faint);letter-spacing:.2em}
+.hint{font-size:12px;color:var(--faint);letter-spacing:.14em;margin:0;text-align:center;transition:opacity .5s}
+
+.pills{display:flex;gap:12px;min-height:52px}
+.pill{border:0;border-radius:999px;padding:14px 30px;font-size:16px;font-weight:600;letter-spacing:.2em;text-indent:.2em;
+  background:linear-gradient(160deg,rgba(255,255,255,.16),rgba(255,255,255,.05));
+  -webkit-backdrop-filter:blur(20px) saturate(170%);backdrop-filter:blur(20px) saturate(170%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),inset 0 0 0 1px rgba(255,255,255,.12),0 8px 24px rgba(0,0,0,.25);
+  transform:scale(var(--press,1));transition:transform .5s cubic-bezier(.34,1.56,.64,1),color .3s}
+.pill:active{--press:.93}
+.pill.armed{color:var(--ember-2)}
+
+.fade{transition:opacity .5s cubic-bezier(.2,.8,.2,1),transform .5s cubic-bezier(.2,.8,.2,1)}
+.fade[data-off="true"]{opacity:0;transform:translateY(6px);pointer-events:none}
+.wake{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);left:0;right:0;text-align:center;font-size:11px;color:var(--faint);margin:0}
+
+@media (prefers-reduced-motion: reduce){
+  .field i{animation:none}
+  .core .main.tick{animation:none}
+}
+</style>
+</head>
+<body>
+
+
+<div class="field" aria-hidden="true"><i class="a"></i><i class="b"></i><i class="c"></i></div>
+
+<main class="app" id="app">
+  <div class="title">运动计数器</div>
+
+  <div class="dial" id="dial">
+    <div class="ring" data-ring="speed" tabindex="0" role="slider" aria-label="速度，秒每个"></div>
+    <div class="ring" data-ring="reps"  tabindex="0" role="slider" aria-label="每组个数"></div>
+    <div class="ring" data-ring="sets"  tabindex="0" role="slider" aria-label="组数"></div>
+    <div class="lens"></div>
+    <canvas id="cv"></canvas>
+    <button type="button" class="core" id="core"><span class="main" id="coreMain">开始</span><span class="sub" id="coreSub">4 × 15</span></button>
+  </div>
+
+  <div class="readout fade" id="readout">
+    <div><b id="rSets">4</b><span>组</span></div>
+    <div><b id="rReps">15</b><span>个</span></div>
+    <div><b id="rSpeed">1.5</b><span>秒/个</span></div>
+  </div>
+
+  <div class="pills fade" id="pills" data-off="true">
+    <button type="button" class="pill" id="stopBtn">结束</button>
+    <button type="button" class="pill" id="pauseBtn">暂停</button>
+  </div>
+
+  <p class="hint fade" id="hint">转动圆环调整 · 由内到外：组数 · 个数 · 速度</p>
+  <p class="wake" id="wakeNote" hidden>手机可能会自动锁屏，可以把自动锁定时间调长</p>
+</main>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const TAU = Math.PI*2, D2R = Math.PI/180;
+  const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
+  const smooth = x => { x = clamp(x,0,1); return x*x*(3-2*x); };
+
+  /* ---------- settings ---------- */
+  const KEY = 'rep-counter-cfg-v3';
+  const DEF = {sets:4, reps:15, speed:15, voice:'anna'};   // speed in tenths of a second
+  let cfg = (() => { try{ const s = JSON.parse(localStorage.getItem(KEY)||'null'); if (s) return Object.assign({}, DEF, s); }catch(e){} return Object.assign({}, DEF); })();
+  const save = () => { try{ localStorage.setItem(KEY, JSON.stringify(cfg)); }catch(e){} };
+  const secs = () => cfg.speed/10;
+
+  /* ring geometry, as fractions of the dial radius; ang = degrees between neighbouring values */
+  const RINGS = {
+    sets:  {r0:.370, r1:.540, min:1, max:30,  ang:24, font:.070, label:v => String(v),            every:1},
+    reps:  {r0:.560, r1:.755, min:1, max:200, ang:14, font:.062, label:v => String(v),            every:1},
+    speed: {r0:.775, r1:.985, min:5, max:50,  ang:9,  font:.056, label:v => (v/10).toFixed(1),    every:5},
+  };
+  const ORDER = ['sets','reps','speed'];
+  const P = {};   // physics per ring
+  ORDER.forEach(k => { P[k] = {pos:cfg[k], vel:0, target:cfg[k], drag:false, active:0, lastAng:0, lastT:0}; });
+
+  /* ---------- DOM rings ---------- */
+  const dial = $('dial');
+  document.querySelectorAll('.ring').forEach(el => {
+    const g = RINGS[el.dataset.ring];
+    el.style.width = el.style.height = (g.r1*100) + '%';
+    const hole = (g.r0/g.r1*100).toFixed(2);
+    const m = 'radial-gradient(closest-side, transparent calc(' + hole + '% - .5px), #000 ' + hole + '%)';
+    el.style.webkitMaskImage = m; el.style.maskImage = m;
+  });
+
+  /* ---------- canvas ---------- */
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  let R = 200, dpr = 1, dirty = true;
+  function resize(){
+    const w = dial.clientWidth; dpr = Math.min(window.devicePixelRatio || 1, 3);
+    R = w/2; cv.width = Math.round(w*dpr); cv.height = Math.round(w*dpr);
+    wake();
+  }
+
+  /* ---------- sound + haptics ---------- */
+  let actx = null, lastClick = 0;
+  function ensureCtx(){
+    try{ actx = actx || new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ actx = null; }
+    return actx;
+  }
+  function unlockAudio(){
+    try{ if (navigator.audioSession) navigator.audioSession.type = 'playback'; }catch(e){}   // iPhone: play even with the silent switch on
+    try{ ensureCtx(); if (actx && actx.state === 'suspended') actx.resume(); }catch(e){}
+  }
+  function tone(freq, dur, vol, type){
+    if (!actx) return;
+    try{
+      const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+      o.type = type || 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
+    }catch(e){}
+  }
+  function detent(){
+    const t = performance.now(); if (t - lastClick < 28) return; lastClick = t;
+    tone(2600, .018, .035, 'triangle');
+    try{ navigator.vibrate && navigator.vibrate(2); }catch(e){}
+  }
+  const synth = window.speechSynthesis || null;
+  let zhVoice = null;
+  function pickVoice(){ if (!synth) return; const vs = synth.getVoices()||[]; zhVoice = vs.find(v => /zh[-_]CN/i.test(v.lang)) || vs.find(v => /^zh/i.test(v.lang)) || null; }
+  if (synth){ pickVoice(); try{ synth.onvoiceschanged = pickVoice; }catch(e){} }
+  function say(text, queue, freq){
+    if (!synth){ tone(freq || 880, .09, .3); return; }
+    try{
+      if (!queue) synth.cancel();
+      const u = new SpeechSynthesisUtterance(String(text));
+      u.lang = 'zh-CN'; if (zhVoice) u.voice = zhVoice;
+      u.rate = secs() < .9 ? 1.7 : secs() < 1.3 ? 1.35 : 1.1;
+      synth.speak(u);
+    }catch(e){}
+  }
+  /* ---------- recorded voice packs ---------- */
+  // one voice: Anna Su (ElevenLabs eleven_v4). If the pack cannot load, the browser's own speech is used instead.
+  cfg.voice = 'anna';
+  const packs = {};
+  let curSrc = null, curGain = null, curEnd = 0;
+  function decode(ab){ return new Promise((ok, no) => { try{ const p = actx.decodeAudioData(ab, ok, no); if (p && p.then) p.then(ok, no); }catch(e){ no(e); } }); }
+  // Seconds from where a clip starts playing to where its first vowel arrives. That is where a listener hears the beat:
+  // 五/八 start on the vowel (~50 ms), while 三/四/七/十 open with a hiss first (~160–300 ms).
+  function vowelAt(d, sr, from){
+    const hop = Math.max(1, Math.round(sr*0.005)), E = [], Z = []; let peak = 0;
+    for (let j = from; j + hop < d.length; j += hop){
+      let e = 0, z = 0;
+      for (let k = j; k < j + hop; k++){ e += d[k]*d[k]; if (k > j && (d[k] >= 0) !== (d[k-1] >= 0)) z++; }
+      e = Math.sqrt(e/hop); E.push(e); Z.push(z/hop); if (e > peak) peak = e;
+    }
+    for (let i = 0; i < E.length; i++) if (E[i] > peak*0.15 && Z[i] < 0.12) return i*0.005;   // loud and not hissy
+    return 0.05;
+  }
+  async function loadPack(k){
+    if (k === 'system' || packs[k]) return;
+    const p = packs[k] = {status:'loading', buf:{}};
+    voiceUI();
+    try{
+      if (!ensureCtx()) throw new Error('no audio');
+      const j = await (await fetch('voices/' + k + '.json')).json();
+      await Promise.all(Object.entries(j.clips).map(async ([ck, b64]) => {
+        const bin = atob(b64), u = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+        const audio = await decode(u.buffer);
+        // skip only true silence: a very low threshold, then back off 40 ms so soft consonants (s, sh, q) stay intact
+        const d = audio.getChannelData(0), sr = audio.sampleRate; let i = 0;
+        while (i < d.length && Math.abs(d[i]) < 0.002) i++;
+        let e = d.length - 1; while (e > i && Math.abs(d[e]) < 0.002) e--;
+        const off = Math.max(0, i/sr - 0.04);
+        p.buf[ck] = {audio, off, len: e/sr - off + 0.05, pc: vowelAt(d, sr, Math.floor(off*sr))};
+      }));
+      p.status = 'ready';
+    }catch(e){ p.status = 'error'; }
+    voiceUI();
+  }
+  function stopClip(at){
+    if (!curSrc || !actx) return;
+    const t = Math.max(actx.currentTime, at || 0);
+    try{ curGain.gain.setTargetAtTime(0, t, 0.012); curSrc.stop(t + 0.06); }catch(e){}
+    curSrc = null;
+  }
+  const packReady = () => { const p = packs[cfg.voice]; return !!(actx && p && p.status === 'ready'); };
+  // beatAt: audio-clock time the beat falls on. The clip then starts early by its own lead-in so its vowel lands on the beat.
+  function playClip(key, queue, beatAt){
+    const p = packs[cfg.voice];
+    if (!actx || !p || p.status !== 'ready' || !p.buf[key]) return false;
+    const c = p.buf[key], t = actx.currentTime;
+    let at = t;
+    if (queue) at = Math.max(t, curEnd + 0.05);
+    else {
+      if (beatAt != null) at = Math.max(t, beatAt - c.pc);
+      stopClip(at);
+    }
+    const s = actx.createBufferSource(), g = actx.createGain();
+    s.buffer = c.audio; s.connect(g); g.connect(actx.destination);
+    s.start(at, c.off);
+    curSrc = s; curGain = g; curEnd = at + c.len;
+    return true;
+  }
+  function cue(key, text, queue, freq, beatAt){
+    if (cfg.voice !== 'system' && playClip(key, queue, beatAt)) return;
+    say(text, queue, freq);
+  }
+  function voiceUI(){}
+
+  const hush = () => { stopClip(); try{ synth && synth.cancel(); }catch(e){} };
+
+  /* ---------- dragging the rings ---------- */
+  let dragKey = null, pid = null;
+  const angleAt = e => { const r = dial.getBoundingClientRect(); return Math.atan2(e.clientY - (r.top + r.height/2), e.clientX - (r.left + r.width/2)); };
+  function ringAt(e){
+    const r = dial.getBoundingClientRect();
+    const d = Math.hypot(e.clientX - (r.left + r.width/2), e.clientY - (r.top + r.height/2)) / (r.width/2);
+    let best = null, bd = 1e9;
+    ORDER.forEach(k => { const g = RINGS[k]; const dd = d < g.r0 ? g.r0 - d : d > g.r1 ? d - g.r1 : 0; if (dd < bd){ bd = dd; best = k; } });
+    return bd < .06 && d > .345 ? best : null;
+  }
+  dial.addEventListener('pointerdown', e => {
+    if (running() || e.target.closest('.core')) return;
+    const k = ringAt(e); if (!k) return;
+    e.preventDefault(); unlockAudio();
+    dragKey = k; pid = e.pointerId;
+    try{ dial.setPointerCapture(pid); }catch(err){}
+    const p = P[k]; p.drag = true; p.vel = 0; p.lastAng = angleAt(e); p.lastT = performance.now();
+    wake();
+  });
+  dial.addEventListener('pointermove', e => {
+    if (!dragKey || e.pointerId !== pid) return;
+    const p = P[dragKey], g = RINGS[dragKey];
+    const a = angleAt(e), t = performance.now();
+    let d = a - p.lastAng; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU;
+    let dPos = (d / D2R) / g.ang;                       // clockwise = larger value
+    const over = p.pos < g.min ? g.min - p.pos : p.pos > g.max ? p.pos - g.max : 0;
+    if ((p.pos < g.min && dPos < 0) || (p.pos > g.max && dPos > 0)) dPos *= .32 / (1 + over*1.4);   // rubber band
+    p.pos += dPos;
+    const dt = Math.max(t - p.lastT, 1) / 1000;
+    p.vel = p.vel*0.6 + (dPos/dt)*0.4;
+    p.lastAng = a; p.lastT = t; wake();
+  });
+  function endDrag(e){
+    if (!dragKey || (e && e.pointerId !== pid)) return;
+    const p = P[dragKey], g = RINGS[dragKey];
+    if (performance.now() - p.lastT > 90) p.vel = 0;   // finger rested before lifting
+    const throwTo = p.pos + clamp(p.vel*0.26, -40, 40);
+    p.target = clamp(Math.round(throwTo), g.min, g.max);
+    p.drag = false; dragKey = null; pid = null; wake();
+  }
+  dial.addEventListener('pointerup', endDrag);
+  dial.addEventListener('pointercancel', endDrag);
+  dial.addEventListener('wheel', e => {
+    if (running()) return;
+    const k = ringAt(e); if (!k) return;
+    e.preventDefault(); unlockAudio();
+    const p = P[k], g = RINGS[k];
+    p.target = clamp(p.target + (e.deltaY > 0 ? 1 : -1), g.min, g.max); wake();
+  }, {passive:false});
+  document.querySelectorAll('.ring').forEach(el => el.addEventListener('keydown', e => {
+    if (running()) return;
+    const k = el.dataset.ring, p = P[k], g = RINGS[k];
+    const step = {ArrowUp:1, ArrowRight:1, ArrowDown:-1, ArrowLeft:-1, PageUp:5, PageDown:-5}[e.key];
+    if (!step) return;
+    e.preventDefault(); unlockAudio();
+    p.target = clamp(p.target + step, g.min, g.max); wake();
+  }));
+
+  /* ---------- counting engine: prep → work → between → … → done ---------- */
+  const PREP = 3;
+  const S = {phase:'idle', set:1, rep:0, paused:false, nextAt:0, prepLeft:0, pausedAt:0, total:0, cuedFor:null};
+  const LEAD = 400;   // ms before a beat at which its voice clip is scheduled on the audio clock
+  let engine = null;
+  const now = () => performance.now();
+  const running = () => S.phase !== 'idle';
+  const timed = () => S.phase === 'prep' || S.phase === 'work';
+
+  function start(){
+    unlockAudio();
+    ORDER.forEach(k => { P[k].pos = P[k].target = cfg[k]; P[k].vel = 0; });
+    Object.assign(S, {set:1, total:0, paused:false});
+    document.body.classList.add('running'); dial.classList.add('running');
+    disarmStop();
+    beginPrep();
+    clearInterval(engine); engine = setInterval(step, 30);
+    requestWake(); ui();
+  }
+  function beginPrep(){
+    S.phase = 'prep'; S.rep = 0; S.prepLeft = PREP; S.cuedFor = null;
+    // the first "3" plays right away; its vowel arrives a little later, so the next beats are counted from that vowel
+    const c = packReady() && cfg.voice !== 'system' ? packs[cfg.voice].buf['n' + PREP] : null;
+    S.nextAt = now() + 1000 + (c ? c.pc*1000 : 0);
+    cue('n' + S.prepLeft, S.prepLeft, false, 620); beat(); ui();
+  }
+  function beginWork(precued){ S.phase = 'work'; if (!precued) cue('go', '开始', false, 1320); S.nextAt = now() + Math.max(secs()*1000, 900); ui(); }
+  function setDone(){
+    if (S.set >= cfg.sets){ finish(); return; }
+    S.phase = 'between'; cue('s' + S.set, '第' + S.set + '组完成', true, 1046); ui();
+  }
+  function finish(){
+    S.phase = 'done'; clearInterval(engine); engine = null; releaseWake();
+    cue('done', '完成，一共' + S.total + '个', true, 1318); ui();
+  }
+  function upcoming(){   // the clip that belongs to the next beat
+    if (S.phase === 'prep') return S.prepLeft - 1 > 0 ? ['n' + (S.prepLeft - 1), S.prepLeft - 1, 620] : ['go', '开始', 1320];
+    return ['n' + (S.rep + 1), S.rep + 1, undefined];
+  }
+  function step(){
+    if (S.paused || !timed()) return;
+    const t = now();
+    // schedule the next number slightly ahead, so its vowel (not its first hiss) lands exactly on the beat
+    if (S.cuedFor !== S.nextAt && t >= S.nextAt - LEAD && packReady() && cfg.voice !== 'system'){
+      const [key, text, freq] = upcoming();
+      if (playClip(key, false, actx.currentTime + (S.nextAt - t)/1000)) S.cuedFor = S.nextAt;
+    }
+    if (t < S.nextAt) return;
+    const pre = S.cuedFor === S.nextAt;
+    if (S.phase === 'prep'){
+      S.prepLeft--;
+      if (S.prepLeft > 0){ if (!pre) cue('n' + S.prepLeft, S.prepLeft, false, 620); beat(); S.nextAt += 1000; ui(); }
+      else beginWork(pre);
+    } else {
+      S.rep++; S.total++; if (!pre) cue('n' + S.rep, S.rep); beat();
+      if (S.rep >= cfg.reps) setDone();
+      else { S.nextAt += secs()*1000; if (t - S.nextAt > 1000) S.nextAt = t + secs()*1000; ui(); }
+    }
+  }
+  function pause(){ if (!timed() || S.paused) return; S.paused = true; S.pausedAt = now(); S.cuedFor = null; hush(); ui(); }
+  function resume(){
+    if (!S.paused) return; unlockAudio();
+    const t = now(); S.nextAt = t + Math.max(S.nextAt - S.pausedAt, S.phase === 'work' ? 800 : 0);
+    S.paused = false; requestWake(); ui();
+  }
+  function quit(){
+    clearInterval(engine); engine = null; S.phase = 'idle'; S.paused = false;
+    hush(); releaseWake();
+    document.body.classList.remove('running'); dial.classList.remove('running');
+    ui();
+  }
+
+  /* ---------- wake lock ---------- */
+  let wl = null;
+  async function requestWake(){
+    if ('wakeLock' in navigator && !document.hidden){ try{ wl = await navigator.wakeLock.request('screen'); }catch(e){ wl = null; } }
+    $('wakeNote').hidden = !!wl || !running();
+  }
+  function releaseWake(){ try{ wl && wl.release(); }catch(e){} wl = null; $('wakeNote').hidden = true; }
+
+  /* ---------- text UI ---------- */
+  function beat(){ const el = $('coreMain'); el.classList.remove('tick'); void el.offsetWidth; el.classList.add('tick'); }
+  function ui(){
+    const main = $('coreMain'), sub = $('coreSub');
+    let m, s, isNum = false;
+    switch (S.phase){
+      case 'idle':    m = '开始'; s = cfg.sets + ' × ' + cfg.reps; break;
+      case 'prep':    m = S.prepLeft; s = '准备'; isNum = true; break;
+      case 'work':    m = S.rep; s = '/ ' + cfg.reps; isNum = true; break;
+      case 'between': m = '继续'; s = '第 ' + (S.set + 1) + ' 组'; break;
+      case 'done':    m = S.total; s = '完成 · 轻点返回'; isNum = true; break;
+    }
+    if (S.paused) s = '已暂停';
+    if (main.textContent !== String(m)) main.textContent = m;
+    main.classList.toggle('n', isNum);
+    sub.textContent = s;
+    $('core').setAttribute('aria-label', S.phase === 'idle' ? '开始' : S.phase === 'between' ? '开始下一组' : S.phase === 'done' ? '返回设置' : (S.paused ? '继续' : '暂停'));
+
+    $('rSets').textContent = running() ? S.set + '/' + cfg.sets : cfg.sets;
+    $('rReps').textContent = cfg.reps;
+    $('rSpeed').textContent = secs().toFixed(1);
+    $('hint').dataset.off = running();
+    $('pills').dataset.off = !running() || S.phase === 'done';
+    $('pauseBtn').textContent = S.paused ? '继续' : '暂停';
+    $('pauseBtn').hidden = S.phase === 'between';
+    document.querySelectorAll('.ring').forEach(el => {
+      const k = el.dataset.ring;
+      el.setAttribute('aria-valuenow', cfg[k]);
+      el.setAttribute('aria-valuetext', k === 'speed' ? secs().toFixed(1) + ' 秒每个' : cfg[k] + (k === 'sets' ? ' 组' : ' 个'));
+      el.tabIndex = running() ? -1 : 0;
+    });
+    wake();
+  }
+
+  /* ---------- controls ---------- */
+  $('core').addEventListener('click', () => {
+    if (S.phase === 'idle') start();
+    else if (S.phase === 'between'){ unlockAudio(); S.set++; beginPrep(); }
+    else if (S.phase === 'done') quit();
+    else S.paused ? resume() : pause();
+  });
+  $('pauseBtn').addEventListener('click', () => S.paused ? resume() : pause());
+  let armed = null;
+  function disarmStop(){ clearTimeout(armed); armed = null; $('stopBtn').textContent = '结束'; $('stopBtn').classList.remove('armed'); }
+  $('stopBtn').addEventListener('click', () => {
+    if (armed){ disarmStop(); quit(); return; }
+    $('stopBtn').textContent = '再点一次'; $('stopBtn').classList.add('armed');
+    armed = setTimeout(disarmStop, 3000);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && running()){ e.preventDefault(); $('core').click(); }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) pause(); else if (running()) requestWake();
+  });
+
+  /* ---------- animation loop ---------- */
+  let mode = 0, modeV = 0, last = performance.now(), raf = 0;
+  function wake(){ dirty = true; if (!raf) raf = requestAnimationFrame(frame); }
+
+  function frame(t){
+    raf = 0;
+    const dt = Math.min((t - last)/1000, 1/30); last = t;
+    let moving = false;
+
+    ORDER.forEach(k => {
+      const p = P[k], g = RINGS[k];
+      if (!p.drag){
+        const K = 150, C = 19;                                   // spring: slightly under-damped
+        const acc = K*(p.target - p.pos) - C*p.vel;
+        p.vel += acc*dt; p.pos += p.vel*dt;
+        if (Math.abs(p.target - p.pos) < .0008 && Math.abs(p.vel) < .01){ p.pos = p.target; p.vel = 0; }
+        else moving = true;
+      } else moving = true;
+      const want = p.drag ? 1 : 0;
+      p.active += (want - p.active) * Math.min(1, dt*10);
+      if (Math.abs(want - p.active) > .002) moving = true;
+      const v = clamp(Math.round(p.pos), g.min, g.max);
+      if (v !== cfg[k] && !running()){ cfg[k] = v; save(); detent(); ui(); }
+    });
+
+    const mt = running() ? 1 : 0;                                 // setup ↔ running morph
+    modeV += (170*(mt - mode) - 24*modeV)*dt; mode += modeV*dt;
+    if (Math.abs(mt - mode) > .001 || Math.abs(modeV) > .001) moving = true; else { mode = mt; modeV = 0; }
+
+    draw(t);
+    if (moving || running()) raf = requestAnimationFrame(frame);
+  }
+
+  function annulus(r0, r1){ ctx.beginPath(); ctx.arc(R,R,r1,0,TAU); ctx.arc(R,R,r0,0,TAU,true); }
+  function edgeGrad(){
+    const g = ctx.createLinearGradient(R*.3, 0, R*1.7, R*2);
+    g.addColorStop(0, 'rgba(255,255,255,.55)'); g.addColorStop(.45, 'rgba(255,255,255,.06)'); g.addColorStop(1, 'rgba(255,255,255,.22)');
+    return g;
+  }
+  function emberGrad(){
+    const g = ctx.createLinearGradient(0, 0, R*2, R*2);
+    g.addColorStop(0, '#FFC78A'); g.addColorStop(1, '#FF6A3D');
+    return g;
+  }
+
+  function draw(t){
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,R*2,R*2);
+    const show = 1 - mode, prog = mode;
+    const tt = S.paused ? S.pausedAt : now();
+
+    ORDER.forEach(k => {
+      const g = RINGS[k], p = P[k];
+      const r0 = g.r0*R, r1 = g.r1*R, rm = (r0 + r1)/2, th = r1 - r0;
+
+      // glass rim + specular sheen
+      ctx.lineWidth = 1; ctx.strokeStyle = edgeGrad();
+      ctx.beginPath(); ctx.arc(R,R,r1-.5,0,TAU); ctx.stroke();
+      ctx.beginPath(); ctx.arc(R,R,r0+.5,0,TAU); ctx.stroke();
+      ctx.save(); annulus(r0, r1); ctx.clip();
+      const sheen = ctx.createRadialGradient(R*.62, R*.28, 0, R*.62, R*.28, R*1.1);
+      sheen.addColorStop(0, 'rgba(255,255,255,' + (.10 + .08*p.active) + ')'); sheen.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = sheen; ctx.fillRect(0,0,R*2,R*2);
+      if (p.active > .01){ ctx.fillStyle = 'rgba(255,255,255,' + (.05*p.active) + ')'; ctx.fillRect(0,0,R*2,R*2); }
+      ctx.restore();
+
+      // ---- setup: numbers rotate past the lens
+      if (show > .01){
+        const span = Math.ceil(170 / g.ang);
+        const lo = Math.max(g.min, Math.floor(p.pos) - span), hi = Math.min(g.max, Math.ceil(p.pos) + span);
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        for (let v = lo; v <= hi; v++){
+          const a = -(v - p.pos)*g.ang;                         // degrees from 12 o'clock, larger values sit to the left
+          const ad = Math.abs(a); if (ad > 168) continue;
+          const rad = (a - 90)*D2R;
+          const x = R + rm*Math.cos(rad), y = R + rm*Math.sin(rad);
+          const near = smooth(1 - Math.abs(v - p.pos));        // 1 when this value sits in the lens
+          const fade = Math.pow(Math.cos(Math.min(ad,168)/168*Math.PI/2), 1.4);
+          const isLabel = v % g.every === 0;
+          ctx.save(); ctx.translate(x, y); ctx.rotate(a*D2R);
+          if (isLabel || near > .02){
+            const fs = R*g.font*(1 + .85*near);
+            ctx.font = (near > .5 ? 600 : 500) + ' ' + fs.toFixed(1) + 'px Manrope, system-ui, sans-serif';
+            const al = isLabel ? (.16 + .42*fade)*(1 - near) + near : near;
+            ctx.fillStyle = 'rgba(244,246,250,' + (al*show).toFixed(3) + ')';
+            ctx.fillText(g.label(v), 0, 1);
+          } else {
+            ctx.strokeStyle = 'rgba(244,246,250,' + ((.10 + .28*fade)*show).toFixed(3) + ')';
+            ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(0, -th*.12); ctx.lineTo(0, th*.12); ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+
+      // ---- running: rings become progress
+      if (prog > .01){
+        ctx.save(); ctx.globalAlpha = prog; ctx.lineCap = 'round';
+        const lw = th*.30;
+        const frac = S.phase === 'work' ? clamp(1 - (S.nextAt - tt)/(secs()*1000), 0, 1) : 0;
+        if (k === 'sets'){
+          const n = cfg.sets, gap = Math.min(6, 120/n), seg = (360 - gap*n)/n;
+          const doneSets = S.set - 1 + ((S.phase === 'between' || S.phase === 'done') ? 1 : 0);
+          const cur = S.phase === 'work' ? (S.rep + frac)/cfg.reps : 0;
+          for (let i = 0; i < n; i++){
+            const a0 = (-90 + gap/2 + i*(seg + gap))*D2R, a1 = a0 + seg*D2R;
+            ctx.lineWidth = lw; ctx.strokeStyle = 'rgba(255,255,255,.09)';
+            ctx.beginPath(); ctx.arc(R,R,rm,a0,a1); ctx.stroke();
+            const f = i < doneSets ? 1 : i === doneSets ? cur : 0;
+            if (f > .001){ ctx.strokeStyle = emberGrad(); ctx.beginPath(); ctx.arc(R,R,rm,a0,a0 + (a1 - a0)*f); ctx.stroke(); }
+          }
+        } else if (k === 'reps'){
+          const pr = S.phase === 'work' ? (S.rep + (S.rep < cfg.reps ? frac : 0))/cfg.reps : (S.phase === 'between' || S.phase === 'done') ? 1 : 0;
+          ctx.lineWidth = lw; ctx.strokeStyle = 'rgba(255,255,255,.09)';
+          ctx.beginPath(); ctx.arc(R,R,rm,0,TAU); ctx.stroke();
+          if (cfg.reps <= 60){
+            ctx.strokeStyle = 'rgba(8,9,13,.55)'; ctx.lineWidth = 1.5; ctx.lineCap = 'butt';
+            for (let i = 1; i < cfg.reps; i++){ const a = (-90 + i*360/cfg.reps)*D2R; ctx.beginPath(); ctx.moveTo(R + (rm - lw/2)*Math.cos(a), R + (rm - lw/2)*Math.sin(a)); ctx.lineTo(R + (rm + lw/2)*Math.cos(a), R + (rm + lw/2)*Math.sin(a)); ctx.stroke(); }
+            ctx.lineCap = 'round';
+          }
+          if (pr > .001){
+            const a1 = (-90 + 360*pr)*D2R;
+            ctx.lineWidth = lw; ctx.strokeStyle = emberGrad();
+            ctx.shadowColor = 'rgba(255,122,69,.55)'; ctx.shadowBlur = 14;
+            ctx.beginPath(); ctx.arc(R,R,rm,-90*D2R,a1); ctx.stroke();
+            ctx.shadowBlur = 0;
+          }
+        } else {
+          ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,.10)';
+          ctx.beginPath(); ctx.arc(R,R,rm,0,TAU); ctx.stroke();
+          let f = null;
+          if (S.phase === 'work') f = frac;
+          else if (S.phase === 'prep') f = clamp(1 - (S.nextAt - tt)/1000, 0, 1);
+          if (f !== null){
+            const head = (-90 + 360*f)*D2R;
+            for (let i = 0; i < 24; i++){                        // comet tail
+              const a = head - i*1.6*D2R, al = (1 - i/24)*.5;
+              ctx.fillStyle = 'rgba(255,184,107,' + al.toFixed(3) + ')';
+              ctx.beginPath(); ctx.arc(R + rm*Math.cos(a), R + rm*Math.sin(a), th*.09*(1 - i/40), 0, TAU); ctx.fill();
+            }
+            ctx.fillStyle = '#FFF3E6'; ctx.shadowColor = 'rgba(255,184,107,.9)'; ctx.shadowBlur = 16;
+            ctx.beginPath(); ctx.arc(R + rm*Math.cos(head), R + rm*Math.sin(head), th*.11, 0, TAU); ctx.fill();
+            ctx.shadowBlur = 0;
+          }
+        }
+        ctx.restore();
+      }
+    });
+    dirty = false;
+  }
+
+  resize();
+  new ResizeObserver(resize).observe(dial);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(wake);
+  voiceUI();
+  loadPack(cfg.voice);
+  ui();
+})();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+</script>
+</body>
+</html>
