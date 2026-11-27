@@ -1,4 +1,4 @@
-﻿"""Build the GitHub Pages site from index.html (the same source the claude.ai artifact uses).
+"""Build the GitHub Pages site from index.html (the same source the claude.ai artifact uses).
 Adds the page head the artifact host normally provides, plus home-screen (PWA) and offline support."""
 import os, sys, shutil, json, hashlib
 
@@ -40,7 +40,7 @@ body{background:#282623}
 /* The very top and bottom of the light field always end in these two colours, whatever the glows are doing.
    Safari tints the area behind its status bar and toolbar from the page edge, so the two now meet without a dark band. */
 .field::before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
-  background:linear-gradient(180deg,#282623 0,rgba(40,38,35,0) 10%,rgba(39,46,43,0) 90%,#272E2B 100%)}
+  background:linear-gradient(180deg,#282623 0,rgba(40,38,35,0) 4%,rgba(39,46,43,0) 96%,#272E2B 100%)}
 .edge{position:fixed;left:0;right:0;height:2px;z-index:2;pointer-events:none}
 .edge.top{top:0;background:#282623}
 .edge.bottom{bottom:0;background:#272E2B}

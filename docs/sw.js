@@ -1,5 +1,5 @@
 // offline support: the page, the voice pack and the fonts are kept on the phone after the first visit
-const CACHE = 'rep-counter-9b5a9fce66';
+const CACHE = 'rep-counter-f1e69d407b';
 const CORE = ['./', 'index.html', 'voices/anna.json', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-180.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {

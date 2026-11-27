@@ -49,21 +49,21 @@ button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation;-webk
 /* ---------- light field behind the glass ---------- */
 .field{position:fixed;inset:0;overflow:hidden;background:var(--ink);z-index:0}
 .field i{position:absolute;width:78vmax;height:78vmax;border-radius:50%;will-change:transform}
-.field .a{left:-24vmax;top:-20vmax;background:radial-gradient(closest-side,rgba(255,122,69,.55),rgba(255,122,69,0));animation:driftA 23s ease-in-out infinite alternate}
-.field .b{right:-30vmax;bottom:-26vmax;background:radial-gradient(closest-side,rgba(62,211,196,.42),rgba(62,211,196,0));animation:driftB 29s ease-in-out infinite alternate}
-.field .c{left:20vmax;top:30vmax;width:56vmax;height:56vmax;background:radial-gradient(closest-side,rgba(255,92,138,.30),rgba(255,92,138,0));animation:driftC 35s ease-in-out infinite alternate}
+.field .a{left:-24vmax;top:-20vmax;background:radial-gradient(closest-side,rgba(255,122,69,.74),rgba(255,122,69,0));animation:driftA 23s ease-in-out infinite alternate}
+.field .b{right:-30vmax;bottom:-26vmax;background:radial-gradient(closest-side,rgba(62,211,196,.58),rgba(62,211,196,0));animation:driftB 29s ease-in-out infinite alternate}
+.field .c{left:20vmax;top:30vmax;width:56vmax;height:56vmax;background:radial-gradient(closest-side,rgba(255,92,138,.42),rgba(255,92,138,0));animation:driftC 35s ease-in-out infinite alternate}
 @keyframes driftA{to{transform:translate(22vmax,18vmax) scale(1.12)}}
 @keyframes driftB{to{transform:translate(-20vmax,-16vmax) scale(.9)}}
 @keyframes driftC{to{transform:translate(-26vmax,-22vmax) scale(1.15)}}
 /* two quieter glows fill the top-right and bottom-left, so a tall phone screen has light from edge to edge */
-.field .d{right:-34vmax;top:-30vmax;width:70vmax;height:70vmax;background:radial-gradient(closest-side,rgba(62,211,196,.24),rgba(62,211,196,0));animation:driftD 31s ease-in-out infinite alternate}
-.field .e{left:-34vmax;bottom:-30vmax;width:70vmax;height:70vmax;background:radial-gradient(closest-side,rgba(255,122,69,.26),rgba(255,122,69,0));animation:driftE 27s ease-in-out infinite alternate}
+.field .d{right:-34vmax;top:-30vmax;width:70vmax;height:70vmax;background:radial-gradient(closest-side,rgba(62,211,196,.36),rgba(62,211,196,0));animation:driftD 31s ease-in-out infinite alternate}
+.field .e{left:-34vmax;bottom:-30vmax;width:70vmax;height:70vmax;background:radial-gradient(closest-side,rgba(255,122,69,.38),rgba(255,122,69,0));animation:driftE 27s ease-in-out infinite alternate}
 @keyframes driftD{to{transform:translate(-12vmax,14vmax) scale(1.1)}}
 @keyframes driftE{to{transform:translate(14vmax,-10vmax) scale(.92)}}
 /* while a ring is moving or a workout runs, the light field holds still: the glass then does not have to re-blur
    a moving background every frame, which is what made dragging stutter on phones */
 .calm .field i{animation-play-state:paused}
-.field::after{content:"";position:absolute;inset:0;background:radial-gradient(150% 120% at 50% 45%,rgba(8,9,13,0) 55%,rgba(8,9,13,.32) 100%)}
+.field::after{content:"";position:absolute;inset:0;background:radial-gradient(150% 120% at 50% 45%,rgba(8,9,13,0) 60%,rgba(8,9,13,.22) 100%)}
 
 /* ---------- page ---------- */
 .app{position:relative;z-index:1;height:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(18px,4vh,34px);
@@ -128,7 +128,7 @@ body{background:#282623}
 /* The very top and bottom of the light field always end in these two colours, whatever the glows are doing.
    Safari tints the area behind its status bar and toolbar from the page edge, so the two now meet without a dark band. */
 .field::before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
-  background:linear-gradient(180deg,#282623 0,rgba(40,38,35,0) 10%,rgba(39,46,43,0) 90%,#272E2B 100%)}
+  background:linear-gradient(180deg,#282623 0,rgba(40,38,35,0) 4%,rgba(39,46,43,0) 96%,#272E2B 100%)}
 .edge{position:fixed;left:0;right:0;height:2px;z-index:2;pointer-events:none}
 .edge.top{top:0;background:#282623}
 .edge.bottom{bottom:0;background:#272E2B}
@@ -149,7 +149,10 @@ body{background:#282623}
     <div class="ring" data-ring="reps"  tabindex="0" role="slider" aria-label="每组个数"></div>
     <div class="ring" data-ring="sets"  tabindex="0" role="slider" aria-label="组数"></div>
     <div class="lens"></div>
-    <canvas id="cv"></canvas>
+    <canvas id="cvRim"></canvas>
+    <canvas id="cv-sets"></canvas>
+    <canvas id="cv-reps"></canvas>
+    <canvas id="cv-speed"></canvas>
     <button type="button" class="core" id="core"><span class="main" id="coreMain">开始</span><span class="sub" id="coreSub">4 × 15</span></button>
   </div>
 
@@ -202,14 +205,27 @@ body{background:#282623}
     el.style.webkitMaskImage = m; el.style.maskImage = m;
   });
 
-  /* ---------- canvas ---------- */
-  const cv = $('cv'), ctx = cv.getContext('2d');
+  /* ---------- canvases ----------
+     One layer for the glass rims, drawn once per size. Each ring has its own canvas, sized to that ring,
+     and only a ring that actually moved is redrawn and re-sent to the graphics chip. Before, all three rings
+     shared one full-size canvas that was redrawn whole on every frame of a drag. */
+  const rim = $('cvRim'), rimCtx = rim.getContext('2d');
+  const RC = {};
+  ORDER.forEach(k => {
+    const el = $('cv-' + k), e = Math.min(1, RINGS[k].r1 + .03);   // extent, as a fraction of the dial radius
+    el.style.left = el.style.top = ((1 - e)*50) + '%';
+    el.style.width = el.style.height = (e*100) + '%';
+    RC[k] = {el, ctx: el.getContext('2d'), e, dirty: true, grad: null, lastPos: NaN, lastActive: NaN};
+  });
   let R = 200, dpr = 1, dirty = true;
   function resize(){
     const w = dial.clientWidth; dpr = Math.min(window.devicePixelRatio || 1, 2);   // 2x is sharp enough for thin lines and text
-    R = w/2; cv.width = Math.round(w*dpr); cv.height = Math.round(w*dpr);
-    wake();
+    R = w/2;
+    rim.width = rim.height = Math.round(w*dpr);
+    ORDER.forEach(k => { const c = RC[k]; c.el.width = c.el.height = Math.round(c.e*w*dpr); c.grad = null; c.dirty = true; });
+    drawRim(); wake();
   }
+  function dirtyAll(){ ORDER.forEach(k => RC[k].dirty = true); wake(); }
 
   /* ---------- sound + haptics ---------- */
   let actx = null, lastClick = 0;
@@ -217,10 +233,23 @@ body{background:#282623}
     try{ actx = actx || new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ actx = null; }
     return actx;
   }
+  let primed = false;
   function unlockAudio(){
     try{ if (navigator.audioSession) navigator.audioSession.type = 'playback'; }catch(e){}   // iPhone: play even with the silent switch on
-    try{ ensureCtx(); if (actx && actx.state === 'suspended') actx.resume(); }catch(e){}
+    try{
+      ensureCtx();
+      if (actx && actx.state === 'suspended') actx.resume();
+      if (actx && !primed){                       // iPhone only opens audio after something actually plays inside a tap
+        const b = actx.createBuffer(1, 1, actx.sampleRate), s = actx.createBufferSource();
+        s.buffer = b; s.connect(actx.destination); s.start(0);
+        primed = actx.state === 'running';
+      }
+    }catch(e){}
   }
+  // iPhone counts a finger lift or a click as permission for sound, not the moment the finger goes down,
+  // so the ring clicks are unlocked on the first lift anywhere on the page
+  ['touchend', 'pointerup', 'click', 'keydown'].forEach(ev =>
+    document.addEventListener(ev, () => { if (!actx || actx.state !== 'running' || !primed) unlockAudio(); }, {capture: true, passive: true}));
   function tone(freq, dur, vol, type){
     if (!actx) return;
     try{
@@ -481,6 +510,13 @@ body{background:#282623}
   function releaseWake(){ try{ wl && wl.release(); }catch(e){} wl = null; $('wakeNote').hidden = true; }
 
   /* ---------- text UI ---------- */
+  function readout(k){                       // light update while a ring turns: only the numbers that changed
+    if (k === 'speed') $('rSpeed').textContent = secs().toFixed(1);
+    else {
+      $(k === 'sets' ? 'rSets' : 'rReps').textContent = cfg[k];
+      if (S.phase === 'idle') $('coreSub').textContent = cfg.sets + ' × ' + cfg.reps;
+    }
+  }
   function beat(){ const el = $('coreMain'); el.classList.remove('tick'); void el.offsetWidth; el.classList.add('tick'); }
   function ui(){
     const main = $('coreMain'), sub = $('coreSub');
@@ -511,6 +547,7 @@ body{background:#282623}
       el.setAttribute('aria-valuetext', k === 'speed' ? secs().toFixed(1) + ' 秒每个' : cfg[k] + (k === 'sets' ? ' 组' : ' 个'));
       el.tabIndex = running() ? -1 : 0;
     });
+    ORDER.forEach(k => { RC[k].dirty = true; });                // state changed: redraw each ring once
     wake();
   }
 
@@ -558,16 +595,25 @@ body{background:#282623}
       p.active += (want - p.active) * Math.min(1, dt*10);
       if (Math.abs(want - p.active) > .002) moving = true;
       const v = clamp(Math.round(p.pos), g.min, g.max);
-      if (v !== cfg[k] && !running()){ cfg[k] = v; save(); detent(); ui(); }
+      if (v !== cfg[k] && !running()){ cfg[k] = v; save(); detent(); readout(k); p.uiPending = true; }
+      // the rest of the page text is refreshed once the ring has settled, not on every number it passes
+      if (p.uiPending && !p.drag && p.pos === p.target){ p.uiPending = false; ui(); }
     });
 
     const mt = running() ? 1 : 0;                                 // setup ↔ running morph
     modeV += (170*(mt - mode) - 24*modeV)*dt; mode += modeV*dt;
-    if (Math.abs(mt - mode) > .001 || Math.abs(modeV) > .001) moving = true; else { mode = mt; modeV = 0; }
+    const morphing = Math.abs(mt - mode) > .001 || Math.abs(modeV) > .001;
+    if (morphing) moving = true; else { mode = mt; modeV = 0; }
 
-    draw(t);
+    const tt = S.paused ? S.pausedAt : now();
+    ORDER.forEach(k => {
+      const c = RC[k], p = P[k];
+      if (c.dirty || (timed() && !S.paused) || morphing || c.lastPos !== p.pos || Math.abs(c.lastActive - p.active) > .002){
+        drawRing(k, tt); c.dirty = false; c.lastPos = p.pos; c.lastActive = p.active;
+      }
+    });
     calm(moving || running());
-    if (moving || running()) raf = requestAnimationFrame(frame);
+    if (moving || (timed() && !S.paused)) raf = requestAnimationFrame(frame);   // still screens (between sets, done, paused) cost nothing
   }
 
   let calmTimer = null;
@@ -578,136 +624,131 @@ body{background:#282623}
     }
   }
 
-  function annulus(r0, r1){ ctx.beginPath(); ctx.arc(R,R,r1,0,TAU); ctx.arc(R,R,r0,0,TAU,true); }
-  // gradients depend only on the dial size, so they are made once per size instead of every frame
-  let gradR = -1, gEdge = null, gEmber = null, gSheen = null;
-  function grads(){
-    if (gradR === R) return;
-    gradR = R;
-    gEdge = ctx.createLinearGradient(R*.3, 0, R*1.7, R*2);
-    gEdge.addColorStop(0, 'rgba(255,255,255,.55)'); gEdge.addColorStop(.45, 'rgba(255,255,255,.06)'); gEdge.addColorStop(1, 'rgba(255,255,255,.22)');
-    gEmber = ctx.createLinearGradient(0, 0, R*2, R*2);
-    gEmber.addColorStop(0, '#FFC78A'); gEmber.addColorStop(1, '#FF6A3D');
-    gSheen = ctx.createRadialGradient(R*.62, R*.28, 0, R*.62, R*.28, R*1.1);
-    gSheen.addColorStop(0, 'rgba(255,255,255,.10)'); gSheen.addColorStop(1, 'rgba(255,255,255,0)');
-  }
-  const edgeGrad = () => gEdge, emberGrad = () => gEmber;
+  function annulus(c, r0, r1){ c.beginPath(); c.arc(R,R,r1,0,TAU); c.arc(R,R,r0,0,TAU,true); }
 
-  function draw(t){
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    ctx.clearRect(0,0,R*2,R*2);
-    grads();
-    const show = 1 - mode, prog = mode;
-    const tt = S.paused ? S.pausedAt : now();
-
+  // glass rims and the specular sheen never move, so they are drawn once per dial size
+  function drawRim(){
+    const c = rimCtx;
+    c.setTransform(dpr,0,0,dpr,0,0); c.clearRect(0,0,R*2,R*2);
+    const edge = c.createLinearGradient(R*.3, 0, R*1.7, R*2);
+    edge.addColorStop(0, 'rgba(255,255,255,.55)'); edge.addColorStop(.45, 'rgba(255,255,255,.06)'); edge.addColorStop(1, 'rgba(255,255,255,.22)');
+    const sheen = c.createRadialGradient(R*.62, R*.28, 0, R*.62, R*.28, R*1.1);
+    sheen.addColorStop(0, 'rgba(255,255,255,.10)'); sheen.addColorStop(1, 'rgba(255,255,255,0)');
     ORDER.forEach(k => {
-      const g = RINGS[k], p = P[k];
-      const r0 = g.r0*R, r1 = g.r1*R, rm = (r0 + r1)/2, th = r1 - r0;
+      const g = RINGS[k], r0 = g.r0*R, r1 = g.r1*R;
+      c.lineWidth = 1; c.strokeStyle = edge;
+      c.beginPath(); c.arc(R,R,r1-.5,0,TAU); c.stroke();
+      c.beginPath(); c.arc(R,R,r0+.5,0,TAU); c.stroke();
+      c.save(); annulus(c, r0, r1); c.clip(); c.fillStyle = sheen; c.fillRect(0,0,R*2,R*2); c.restore();
+    });
+  }
 
-      // glass rim + specular sheen
-      ctx.lineWidth = 1; ctx.strokeStyle = edgeGrad();
-      ctx.beginPath(); ctx.arc(R,R,r1-.5,0,TAU); ctx.stroke();
-      ctx.beginPath(); ctx.arc(R,R,r0+.5,0,TAU); ctx.stroke();
-      ctx.save(); annulus(r0, r1); ctx.clip();
-      ctx.fillStyle = gSheen; ctx.fillRect(0,0,R*2,R*2);
-      if (p.active > .01){                                     // the ring under the finger brightens
-        ctx.globalAlpha = p.active*.8; ctx.fillRect(0,0,R*2,R*2); ctx.globalAlpha = 1;
-        ctx.fillStyle = 'rgba(255,255,255,' + (.05*p.active) + ')'; ctx.fillRect(0,0,R*2,R*2);
-      }
+  // one ring on its own canvas; drawing coordinates stay in whole-dial space (centre R,R)
+  function drawRing(k, tt){
+    const C = RC[k], ctx = C.ctx, g = RINGS[k], p = P[k];
+    const off = (1 - C.e)*R, size = C.e*2*R;
+    ctx.setTransform(dpr,0,0,dpr,-off*dpr,-off*dpr);
+    ctx.clearRect(off, off, size, size);
+    if (!C.grad){ C.grad = ctx.createLinearGradient(0, 0, R*2, R*2); C.grad.addColorStop(0, '#FFC78A'); C.grad.addColorStop(1, '#FF6A3D'); }
+    const r0 = g.r0*R, r1 = g.r1*R, rm = (r0 + r1)/2, th = r1 - r0;
+    const show = 1 - mode, prog = mode;
+
+    if (p.active > .01){                                       // the ring under the finger brightens
+      ctx.save(); annulus(ctx, r0, r1); ctx.clip();
+      ctx.fillStyle = 'rgba(255,255,255,' + (.09*p.active).toFixed(3) + ')'; ctx.fillRect(off, off, size, size);
       ctx.restore();
+    }
 
-      // ---- setup: numbers rotate past the lens
-      if (show > .01){
-        const span = Math.ceil(170 / g.ang);
-        const lo = Math.max(g.min, Math.floor(p.pos) - span), hi = Math.min(g.max, Math.ceil(p.pos) + span);
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        // one font per ring; labels passing the lens are enlarged with a scale instead of a new font size (much cheaper on phones)
-        const fontBase = '500 ' + (R*g.font).toFixed(1) + 'px Manrope, system-ui, sans-serif';
-        const fontNear = '600 ' + (R*g.font).toFixed(1) + 'px Manrope, system-ui, sans-serif';
-        ctx.font = fontBase;
-        for (let v = lo; v <= hi; v++){
-          const a = -(v - p.pos)*g.ang;                         // degrees from 12 o'clock, larger values sit to the left
-          const ad = Math.abs(a); if (ad > 168) continue;
-          const rad = (a - 90)*D2R;
-          const x = R + rm*Math.cos(rad), y = R + rm*Math.sin(rad);
-          const near = smooth(1 - Math.abs(v - p.pos));        // 1 when this value sits in the lens
-          const fade = Math.pow(Math.cos(Math.min(ad,168)/168*Math.PI/2), 1.4);
-          const isLabel = v % g.every === 0;
-          ctx.save(); ctx.translate(x, y); ctx.rotate(a*D2R);
-          if (isLabel || near > .02){
-            const sc = 1 + .85*near;
-            if (sc !== 1) ctx.scale(sc, sc);
-            const al = isLabel ? (.16 + .42*fade)*(1 - near) + near : near;
-            ctx.fillStyle = 'rgba(244,246,250,' + (al*show).toFixed(3) + ')';
-            if (near > .5){ ctx.font = fontNear; ctx.fillText(g.label(v), 0, 1/sc); ctx.font = fontBase; }
-            else ctx.fillText(g.label(v), 0, 1/sc);
-          } else {
-            ctx.strokeStyle = 'rgba(244,246,250,' + ((.10 + .28*fade)*show).toFixed(3) + ')';
-            ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(0, -th*.12); ctx.lineTo(0, th*.12); ctx.stroke();
-          }
-          ctx.restore();
-        }
-      }
-
-      // ---- running: rings become progress
-      if (prog > .01){
-        ctx.save(); ctx.globalAlpha = prog; ctx.lineCap = 'round';
-        const lw = th*.30;
-        const frac = S.phase === 'work' ? clamp(1 - (S.nextAt - tt)/(secs()*1000), 0, 1) : 0;
-        if (k === 'sets'){
-          const n = cfg.sets, gap = Math.min(6, 120/n), seg = (360 - gap*n)/n;
-          const doneSets = S.set - 1 + ((S.phase === 'between' || S.phase === 'done') ? 1 : 0);
-          const cur = S.phase === 'work' ? (S.rep + frac)/cfg.reps : 0;
-          for (let i = 0; i < n; i++){
-            const a0 = (-90 + gap/2 + i*(seg + gap))*D2R, a1 = a0 + seg*D2R;
-            ctx.lineWidth = lw; ctx.strokeStyle = 'rgba(255,255,255,.09)';
-            ctx.beginPath(); ctx.arc(R,R,rm,a0,a1); ctx.stroke();
-            const f = i < doneSets ? 1 : i === doneSets ? cur : 0;
-            if (f > .001){ ctx.strokeStyle = emberGrad(); ctx.beginPath(); ctx.arc(R,R,rm,a0,a0 + (a1 - a0)*f); ctx.stroke(); }
-          }
-        } else if (k === 'reps'){
-          const pr = S.phase === 'work' ? (S.rep + (S.rep < cfg.reps ? frac : 0))/cfg.reps : (S.phase === 'between' || S.phase === 'done') ? 1 : 0;
-          ctx.lineWidth = lw; ctx.strokeStyle = 'rgba(255,255,255,.09)';
-          ctx.beginPath(); ctx.arc(R,R,rm,0,TAU); ctx.stroke();
-          if (cfg.reps <= 60){
-            ctx.strokeStyle = 'rgba(8,9,13,.55)'; ctx.lineWidth = 1.5; ctx.lineCap = 'butt';
-            for (let i = 1; i < cfg.reps; i++){ const a = (-90 + i*360/cfg.reps)*D2R; ctx.beginPath(); ctx.moveTo(R + (rm - lw/2)*Math.cos(a), R + (rm - lw/2)*Math.sin(a)); ctx.lineTo(R + (rm + lw/2)*Math.cos(a), R + (rm + lw/2)*Math.sin(a)); ctx.stroke(); }
-            ctx.lineCap = 'round';
-          }
-          if (pr > .001){
-            const a1 = (-90 + 360*pr)*D2R;
-            ctx.lineWidth = lw; ctx.strokeStyle = emberGrad();
-            ctx.shadowColor = 'rgba(255,122,69,.55)'; ctx.shadowBlur = 14;
-            ctx.beginPath(); ctx.arc(R,R,rm,-90*D2R,a1); ctx.stroke();
-            ctx.shadowBlur = 0;
-          }
+    // ---- setup: numbers rotate past the lens
+    if (show > .01){
+      const span = Math.ceil(170 / g.ang);
+      const lo = Math.max(g.min, Math.floor(p.pos) - span), hi = Math.min(g.max, Math.ceil(p.pos) + span);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      // one font per ring; labels passing the lens are enlarged with a scale instead of a new font size
+      const fontBase = '500 ' + (R*g.font).toFixed(1) + 'px Manrope, system-ui, sans-serif';
+      const fontNear = '600 ' + (R*g.font).toFixed(1) + 'px Manrope, system-ui, sans-serif';
+      ctx.font = fontBase;
+      for (let v = lo; v <= hi; v++){
+        const a = -(v - p.pos)*g.ang;                           // degrees from 12 o'clock, larger values sit to the left
+        const ad = Math.abs(a); if (ad > 168) continue;
+        const rad = (a - 90)*D2R;
+        const x = R + rm*Math.cos(rad), y = R + rm*Math.sin(rad);
+        const near = smooth(1 - Math.abs(v - p.pos));          // 1 when this value sits in the lens
+        const fade = Math.pow(Math.cos(Math.min(ad,168)/168*Math.PI/2), 1.4);
+        const isLabel = v % g.every === 0;
+        ctx.save(); ctx.translate(x, y); ctx.rotate(a*D2R);
+        if (isLabel || near > .02){
+          const sc = 1 + .85*near;
+          if (sc !== 1) ctx.scale(sc, sc);
+          const al = isLabel ? (.16 + .42*fade)*(1 - near) + near : near;
+          ctx.fillStyle = 'rgba(244,246,250,' + (al*show).toFixed(3) + ')';
+          if (near > .5){ ctx.font = fontNear; ctx.fillText(g.label(v), 0, 1/sc); ctx.font = fontBase; }
+          else ctx.fillText(g.label(v), 0, 1/sc);
         } else {
-          ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,.10)';
-          ctx.beginPath(); ctx.arc(R,R,rm,0,TAU); ctx.stroke();
-          let f = null;
-          if (S.phase === 'work') f = frac;
-          else if (S.phase === 'prep') f = clamp(1 - (S.nextAt - tt)/1000, 0, 1);
-          if (f !== null){
-            const head = (-90 + 360*f)*D2R;
-            for (let i = 0; i < 24; i++){                        // comet tail
-              const a = head - i*1.6*D2R, al = (1 - i/24)*.5;
-              ctx.fillStyle = 'rgba(255,184,107,' + al.toFixed(3) + ')';
-              ctx.beginPath(); ctx.arc(R + rm*Math.cos(a), R + rm*Math.sin(a), th*.09*(1 - i/40), 0, TAU); ctx.fill();
-            }
-            ctx.fillStyle = '#FFF3E6'; ctx.shadowColor = 'rgba(255,184,107,.9)'; ctx.shadowBlur = 16;
-            ctx.beginPath(); ctx.arc(R + rm*Math.cos(head), R + rm*Math.sin(head), th*.11, 0, TAU); ctx.fill();
-            ctx.shadowBlur = 0;
-          }
+          ctx.strokeStyle = 'rgba(244,246,250,' + ((.10 + .28*fade)*show).toFixed(3) + ')';
+          ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(0, -th*.12); ctx.lineTo(0, th*.12); ctx.stroke();
         }
         ctx.restore();
       }
-    });
-    dirty = false;
+    }
+
+    // ---- running: rings become progress
+    if (prog > .01){
+      ctx.save(); ctx.globalAlpha = prog; ctx.lineCap = 'round';
+      const lw = th*.30;
+      const frac = S.phase === 'work' ? clamp(1 - (S.nextAt - tt)/(secs()*1000), 0, 1) : 0;
+      if (k === 'sets'){
+        const n = cfg.sets, gap = Math.min(6, 120/n), seg = (360 - gap*n)/n;
+        const doneSets = S.set - 1 + ((S.phase === 'between' || S.phase === 'done') ? 1 : 0);
+        const cur = S.phase === 'work' ? (S.rep + frac)/cfg.reps : 0;
+        for (let i = 0; i < n; i++){
+          const a0 = (-90 + gap/2 + i*(seg + gap))*D2R, a1 = a0 + seg*D2R;
+          ctx.lineWidth = lw; ctx.strokeStyle = 'rgba(255,255,255,.09)';
+          ctx.beginPath(); ctx.arc(R,R,rm,a0,a1); ctx.stroke();
+          const f = i < doneSets ? 1 : i === doneSets ? cur : 0;
+          if (f > .001){ ctx.strokeStyle = C.grad; ctx.beginPath(); ctx.arc(R,R,rm,a0,a0 + (a1 - a0)*f); ctx.stroke(); }
+        }
+      } else if (k === 'reps'){
+        const pr = S.phase === 'work' ? (S.rep + (S.rep < cfg.reps ? frac : 0))/cfg.reps : (S.phase === 'between' || S.phase === 'done') ? 1 : 0;
+        ctx.lineWidth = lw; ctx.strokeStyle = 'rgba(255,255,255,.09)';
+        ctx.beginPath(); ctx.arc(R,R,rm,0,TAU); ctx.stroke();
+        if (cfg.reps <= 60){
+          ctx.strokeStyle = 'rgba(8,9,13,.55)'; ctx.lineWidth = 1.5; ctx.lineCap = 'butt';
+          for (let i = 1; i < cfg.reps; i++){ const a = (-90 + i*360/cfg.reps)*D2R; ctx.beginPath(); ctx.moveTo(R + (rm - lw/2)*Math.cos(a), R + (rm - lw/2)*Math.sin(a)); ctx.lineTo(R + (rm + lw/2)*Math.cos(a), R + (rm + lw/2)*Math.sin(a)); ctx.stroke(); }
+          ctx.lineCap = 'round';
+        }
+        if (pr > .001){
+          const a1 = (-90 + 360*pr)*D2R;
+          ctx.lineWidth = lw; ctx.strokeStyle = C.grad;
+          ctx.shadowColor = 'rgba(255,122,69,.55)'; ctx.shadowBlur = 14;
+          ctx.beginPath(); ctx.arc(R,R,rm,-90*D2R,a1); ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
+      } else {
+        ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,.10)';
+        ctx.beginPath(); ctx.arc(R,R,rm,0,TAU); ctx.stroke();
+        let f = null;
+        if (S.phase === 'work') f = frac;
+        else if (S.phase === 'prep') f = clamp(1 - (S.nextAt - tt)/1000, 0, 1);
+        if (f !== null){
+          const head = (-90 + 360*f)*D2R;
+          for (let i = 0; i < 24; i++){                          // comet tail
+            const a = head - i*1.6*D2R, al = (1 - i/24)*.5;
+            ctx.fillStyle = 'rgba(255,184,107,' + al.toFixed(3) + ')';
+            ctx.beginPath(); ctx.arc(R + rm*Math.cos(a), R + rm*Math.sin(a), th*.09*(1 - i/40), 0, TAU); ctx.fill();
+          }
+          ctx.fillStyle = '#FFF3E6'; ctx.shadowColor = 'rgba(255,184,107,.9)'; ctx.shadowBlur = 16;
+          ctx.beginPath(); ctx.arc(R + rm*Math.cos(head), R + rm*Math.sin(head), th*.11, 0, TAU); ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+      }
+      ctx.restore();
+    }
   }
 
   resize();
   new ResizeObserver(resize).observe(dial);
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(wake);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(dirtyAll);
   voiceUI();
   loadPack(cfg.voice);
   ui();
